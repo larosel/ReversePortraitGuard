@@ -21,8 +21,6 @@ Foreground Service가 백그라운드에서 방향을 감지합니다. Reverse P
 
 접근성 서비스가 잠금 상태와 기기 방향을 확인합니다. 잠금 상태에서 Reverse Portrait가 감지되면 `TYPE_ACCESSIBILITY_OVERLAY` 전체 화면을 표시해 터치를 차단합니다.
 
-`setShowWhenLocked`는 사용하지 않습니다. 앱 Activity가 실행 중이지 않아도 활성화된 접근성 서비스가 잠금화면 차단을 담당합니다.
-
 ## 설치 및 설정
 
 1. [GitHub Releases](https://github.com/larosel/ReversePortraitGuard/releases)에서 APK를 내려받아 설치합니다.
