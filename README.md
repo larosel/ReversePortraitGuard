@@ -1,4 +1,22 @@
-# Reverse Portrait Guard
+<h1>
+  <img src="artwork/app-icon-1024.png" alt="Reverse Portrait Guard 앱 아이콘" width="48" height="48" align="absmiddle" />
+  Reverse Portrait Guard
+</h1>
+
+## 샘플 화면
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/browser-touch-block.jpg" alt="일반 앱 터치 차단 화면" width="300" /><br />
+      <sub>일반 앱 사용 중 터치 차단</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/lock-screen-touch-block.jpg" alt="잠금화면 터치 차단 화면" width="300" /><br />
+      <sub>잠금화면 터치 차단</sub>
+    </td>
+  </tr>
+</table>
 
 Android 기기가 Reverse Portrait(상하 반전 세로 방향) 상태일 때 실수로 발생하는 터치를 차단하는 개인용 앱입니다. 자동 회전 설정과 무관하게 중력 센서로 기기 방향을 감지합니다.
 
@@ -22,6 +40,9 @@ Foreground Service가 백그라운드에서 방향을 감지합니다. Reverse P
 접근성 서비스가 잠금 상태와 기기 방향을 확인합니다. 잠금 상태에서 Reverse Portrait가 감지되면 `TYPE_ACCESSIBILITY_OVERLAY` 전체 화면을 표시해 터치를 차단합니다.
 
 ## 설치 및 설정
+
+> [!WARNING]
+> 이 앱은 외부 APK이며 접근성 서비스와 화면 오버레이 권한을 사용하므로 Google Play Protect 또는 Samsung 자동 차단기에 의해 설치가 차단되거나 경고가 표시될 수 있습니다. 출처와 코드를 직접 확인한 경우에만 설치하세요. 설치 후 접근성 서비스를 켤 수 없다면 앱 정보의 우측 상단 메뉴에서 **제한된 설정 허용**이 필요할 수 있습니다.
 
 1. [GitHub Releases](https://github.com/larosel/ReversePortraitGuard/releases)에서 APK를 내려받아 설치합니다.
 2. 앱에서 **다른 앱 위에 표시 권한 설정**을 열어 권한을 허용합니다.
