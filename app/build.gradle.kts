@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.reverseportraitguard"
         minSdk = 23
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 7
+        versionName = "1.6"
     }
 
     buildTypes {

@@ -28,7 +28,7 @@ public class GuardService extends Service implements SensorEventListener {
     public static volatile boolean running;
 
     private static final int NOTIFICATION_ID = 1001;
-    private static final String CHANNEL_ID = "reverse_portrait_guard";
+    public static final String CHANNEL_ID = "reverse_portrait_guard";
     private static final long STABLE_TIME_MS = 300L;
     private static final float ENTER_THRESHOLD = -7.0f;
     private static final float EXIT_THRESHOLD = -5.5f;
