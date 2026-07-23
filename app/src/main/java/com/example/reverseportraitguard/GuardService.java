@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.app.KeyguardManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.hardware.Sensor;
@@ -24,7 +25,8 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-public class GuardService extends Service implements SensorEventListener {
+public class GuardService extends Service implements SensorEventListener,
+        SharedPreferences.OnSharedPreferenceChangeListener {
     public static volatile boolean running;
 
     private static final int NOTIFICATION_ID = 1001;
@@ -38,6 +40,7 @@ public class GuardService extends Service implements SensorEventListener {
     private WindowManager windowManager;
     private KeyguardManager keyguardManager;
     private View blockingOverlay;
+    private SharedPreferences preferences;
     private boolean usingAccelerometer;
     private boolean blocked;
     private boolean candidateState;
@@ -50,6 +53,9 @@ public class GuardService extends Service implements SensorEventListener {
         running = true;
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, createNotification());
+
+        preferences = getSharedPreferences(OverlaySettings.PREFERENCES_NAME, MODE_PRIVATE);
+        preferences.registerOnSharedPreferenceChangeListener(this);
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         keyguardManager = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
@@ -66,6 +72,10 @@ public class GuardService extends Service implements SensorEventListener {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!preferences.getBoolean(OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED, false)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
@@ -126,7 +136,8 @@ public class GuardService extends Service implements SensorEventListener {
         overlay.setGravity(Gravity.CENTER);
         overlay.setOrientation(LinearLayout.VERTICAL);
         overlay.setRotation(180f);
-        overlay.setBackgroundColor(Color.argb(210, 127, 29, 29));
+        overlay.setBackgroundColor(Color.rgb(127, 29, 29));
+        overlay.setAlpha(getOverlayAlpha());
         overlay.setOnTouchListener((view, event) -> true);
 
         TextView title = new TextView(this);
@@ -175,6 +186,21 @@ public class GuardService extends Service implements SensorEventListener {
         }
     }
 
+    private float getOverlayAlpha() {
+        return preferences.getInt(OverlaySettings.KEY_OPACITY_PERCENT,
+                OverlaySettings.DEFAULT_OPACITY_PERCENT) / 100f;
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        if (OverlaySettings.KEY_OPACITY_PERCENT.equals(key) && blockingOverlay != null) {
+            blockingOverlay.setAlpha(getOverlayAlpha());
+        } else if (OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED.equals(key)
+                && !sharedPreferences.getBoolean(key, false)) {
+            stopSelf();
+        }
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -203,6 +229,9 @@ public class GuardService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         removeBlockingOverlay();
+        if (preferences != null) {
+            preferences.unregisterOnSharedPreferenceChangeListener(this);
+        }
         sensorManager.unregisterListener(this);
         running = false;
         super.onDestroy();

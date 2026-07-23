@@ -2,10 +2,12 @@ package com.example.reverseportraitguard;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Dialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -15,23 +17,31 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private TextView permissionTitle;
-    private LinearLayout permissionContent;
+    private SharedPreferences preferences;
+    private Switch overlaySwitch;
+    private Switch lockScreenSwitch;
+    private LinearLayout overlayPermissionContent;
+    private LinearLayout lockScreenPermissionContent;
+    private LinearLayout unusedAppRestrictionsContent;
     private TextView permissionState;
     private TextView accessibilityState;
-    private TextView serviceState;
-    private boolean lastAllGranted;
+    private boolean updatingSwitches;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        preferences = getSharedPreferences(OverlaySettings.PREFERENCES_NAME, MODE_PRIVATE);
         setContentView(createContentView());
     }
 
@@ -67,79 +77,171 @@ public class MainActivity extends Activity {
         root.addView(description, matchWrap());
 
         LinearLayout permissionCard = createCard();
-        permissionTitle = text("필수 권한", 19, Color.rgb(15, 40, 85));
-        permissionTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        permissionTitle.setPadding(0, dp(4), 0, dp(4));
-        permissionTitle.setOnClickListener(v -> setPermissionExpanded(
-                permissionContent.getVisibility() != android.view.View.VISIBLE));
-        permissionCard.addView(permissionTitle, matchWrap());
+        TextView protectionTitle = text("보호 기능", 19, Color.rgb(15, 40, 85));
+        protectionTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        protectionTitle.setPadding(0, dp(4), 0, dp(8));
+        permissionCard.addView(protectionTitle, matchWrap());
 
-        permissionContent = new LinearLayout(this);
-        permissionContent.setOrientation(LinearLayout.VERTICAL);
+        overlaySwitch = new Switch(this);
+        overlaySwitch.setText("일반 화면 오버레이");
+        overlaySwitch.setTextSize(18);
+        overlaySwitch.setChecked(preferences.getBoolean(
+                OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED, false));
+        overlaySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (updatingSwitches) return;
+            preferences.edit().putBoolean(
+                    OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED, isChecked).apply();
+            if (isChecked) {
+                if (Settings.canDrawOverlays(this)) {
+                    startGuard();
+                } else {
+                    openOverlaySettings();
+                }
+            } else {
+                stopGuard();
+            }
+            updateStatus();
+        });
+        permissionCard.addView(overlaySwitch, new LinearLayout.LayoutParams(-1, dp(52)));
 
-        permissionState = text("", 17, Color.rgb(71, 85, 105));
+        overlayPermissionContent = new LinearLayout(this);
+        overlayPermissionContent.setOrientation(LinearLayout.VERTICAL);
+
+        permissionState = text("오버레이 권한이 필요합니다.", 17, Color.rgb(220, 38, 38));
         permissionState.setGravity(Gravity.CENTER);
-        permissionState.setPadding(0, dp(14), 0, 0);
-        permissionContent.addView(permissionState, matchWrap());
+        permissionState.setPadding(0, dp(8), 0, 0);
+        overlayPermissionContent.addView(permissionState, matchWrap());
 
         Button permissionButton = new Button(this);
         permissionButton.setText("다른 앱 위에 표시 권한 설정");
         permissionButton.setOnClickListener(v -> openOverlaySettings());
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(-1, dp(56));
-        buttonParams.topMargin = dp(18);
-        permissionContent.addView(permissionButton, buttonParams);
+        buttonParams.topMargin = dp(10);
+        overlayPermissionContent.addView(permissionButton, buttonParams);
+        permissionCard.addView(overlayPermissionContent, matchWrap());
 
-        accessibilityState = text("", 17, Color.rgb(71, 85, 105));
+        lockScreenSwitch = new Switch(this);
+        lockScreenSwitch.setText("잠금화면 보호");
+        lockScreenSwitch.setTextSize(18);
+        lockScreenSwitch.setChecked(preferences.getBoolean(
+                OverlaySettings.KEY_LOCK_SCREEN_ENABLED, false));
+        lockScreenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (updatingSwitches) return;
+            preferences.edit().putBoolean(
+                    OverlaySettings.KEY_LOCK_SCREEN_ENABLED, isChecked).apply();
+            updateStatus();
+        });
+        LinearLayout.LayoutParams lockSwitchParams = new LinearLayout.LayoutParams(-1, dp(52));
+        lockSwitchParams.topMargin = dp(12);
+        permissionCard.addView(lockScreenSwitch, lockSwitchParams);
+
+        lockScreenPermissionContent = new LinearLayout(this);
+        lockScreenPermissionContent.setOrientation(LinearLayout.VERTICAL);
+
+        accessibilityState = text("잠금화면 보호를 사용하려면 접근성 권한이 필요합니다. " +
+                        "제한된 설정으로 차단된 경우 앱 권한 화면에서 먼저 허용해주세요.",
+                17, Color.rgb(220, 38, 38));
         accessibilityState.setGravity(Gravity.CENTER);
-        accessibilityState.setPadding(0, dp(24), 0, 0);
-        permissionContent.addView(accessibilityState, matchWrap());
+        accessibilityState.setPadding(0, dp(8), 0, 0);
+        lockScreenPermissionContent.addView(accessibilityState, matchWrap());
 
         Button accessibilityButton = new Button(this);
         accessibilityButton.setText("잠금화면 접근성 서비스 설정");
         accessibilityButton.setOnClickListener(v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         LinearLayout.LayoutParams accessibilityParams = new LinearLayout.LayoutParams(-1, dp(56));
-        accessibilityParams.topMargin = dp(12);
-        permissionContent.addView(accessibilityButton, accessibilityParams);
+        accessibilityParams.topMargin = dp(10);
+        lockScreenPermissionContent.addView(accessibilityButton, accessibilityParams);
 
-        permissionCard.addView(permissionContent, matchWrap());
+        Button appPermissionButton = new Button(this);
+        appPermissionButton.setText("앱 권한 설정 열기");
+        appPermissionButton.setOnClickListener(v -> openAppDetailsSettings());
+        LinearLayout.LayoutParams appPermissionParams = new LinearLayout.LayoutParams(-1, dp(56));
+        appPermissionParams.topMargin = dp(10);
+        lockScreenPermissionContent.addView(appPermissionButton, appPermissionParams);
+        permissionCard.addView(lockScreenPermissionContent, matchWrap());
+
+        unusedAppRestrictionsContent = new LinearLayout(this);
+        unusedAppRestrictionsContent.setOrientation(LinearLayout.VERTICAL);
+
+        TextView unusedAppWarning = text(
+                "사용하지 않는 앱 관리가 켜져 있습니다. 장기간 앱을 열지 않아도 보호 기능이 " +
+                        "중단되지 않도록 이 설정을 꺼주세요.",
+                17, Color.rgb(220, 38, 38));
+        unusedAppWarning.setGravity(Gravity.CENTER);
+        unusedAppWarning.setPadding(0, dp(18), 0, 0);
+        unusedAppRestrictionsContent.addView(unusedAppWarning, matchWrap());
+
+        Button unusedAppSettingsButton = new Button(this);
+        unusedAppSettingsButton.setText("사용하지 않는 앱 관리 끄기");
+        unusedAppSettingsButton.setOnClickListener(v -> openUnusedAppRestrictionsSettings());
+        LinearLayout.LayoutParams unusedAppParams = new LinearLayout.LayoutParams(-1, dp(56));
+        unusedAppParams.topMargin = dp(10);
+        unusedAppRestrictionsContent.addView(unusedAppSettingsButton, unusedAppParams);
+        permissionCard.addView(unusedAppRestrictionsContent, matchWrap());
 
         root.addView(permissionCard, cardParams());
 
-        LinearLayout controlCard = createCard();
-        TextView controlTitle = text("보호 서비스", 19, Color.rgb(15, 40, 85));
-        controlTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        controlCard.addView(controlTitle, matchWrap());
+        LinearLayout appearanceCard = createCard();
+        TextView appearanceTitle = text("오버레이 및 알림", 19, Color.rgb(15, 40, 85));
+        appearanceTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        appearanceCard.addView(appearanceTitle, matchWrap());
 
-        serviceState = text("", 18, Color.rgb(71, 85, 105));
-        serviceState.setGravity(Gravity.CENTER);
-        serviceState.setPadding(0, dp(28), 0, dp(12));
-        controlCard.addView(serviceState, matchWrap());
+        TextView opacityTitle = text("오버레이 불투명도", 16, Color.rgb(71, 85, 105));
+        opacityTitle.setPadding(0, dp(12), 0, 0);
+        appearanceCard.addView(opacityTitle, matchWrap());
 
-        Button startButton = new Button(this);
-        startButton.setText("터치 방지 시작");
-        startButton.setOnClickListener(v -> startGuard());
-        controlCard.addView(startButton, new LinearLayout.LayoutParams(-1, dp(56)));
+        int initialOpacity = preferences.getInt(
+                OverlaySettings.KEY_OPACITY_PERCENT, OverlaySettings.DEFAULT_OPACITY_PERCENT);
+        TextView opacityValue = text(initialOpacity + "%", 17, Color.rgb(71, 85, 105));
+        opacityValue.setGravity(Gravity.CENTER);
+        opacityValue.setPadding(0, dp(12), 0, 0);
+        appearanceCard.addView(opacityValue, matchWrap());
 
-        Button stopButton = new Button(this);
-        stopButton.setText("터치 방지 중지");
-        stopButton.setOnClickListener(v -> {
-            stopService(new Intent(this, GuardService.class));
-            GuardService.running = false;
-            updateStatus();
+        SeekBar opacitySeekBar = new SeekBar(this);
+        opacitySeekBar.setMax(100);
+        opacitySeekBar.setProgress(initialOpacity);
+        opacitySeekBar.setContentDescription("오버레이 불투명도");
+        opacitySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                opacityValue.setText(progress + "%");
+                if (fromUser) {
+                    preferences.edit().putInt(OverlaySettings.KEY_OPACITY_PERCENT, progress).apply();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) { }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-        LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(-1, dp(56));
-        stopParams.topMargin = dp(10);
-        controlCard.addView(stopButton, stopParams);
+        LinearLayout.LayoutParams seekBarParams = new LinearLayout.LayoutParams(-1, dp(48));
+        seekBarParams.topMargin = dp(4);
+        appearanceCard.addView(opacitySeekBar, seekBarParams);
+
+        TextView opacityRange = text("0% (완전 투명)  —  100% (완전 불투명)",
+                14, Color.rgb(100, 116, 139));
+        opacityRange.setGravity(Gravity.CENTER);
+        appearanceCard.addView(opacityRange, matchWrap());
+
+        Button previewButton = new Button(this);
+        previewButton.setText("오버레이 미리보기");
+        previewButton.setOnClickListener(v -> showOverlayPreview(
+                preferences.getInt(OverlaySettings.KEY_OPACITY_PERCENT,
+                        OverlaySettings.DEFAULT_OPACITY_PERCENT)));
+        LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(-1, dp(56));
+        previewParams.topMargin = dp(14);
+        appearanceCard.addView(previewButton, previewParams);
 
         Button notificationButton = new Button(this);
         notificationButton.setText("상시 알림 켜기/끄기");
         notificationButton.setOnClickListener(v -> openNotificationSettings());
         LinearLayout.LayoutParams notificationParams = new LinearLayout.LayoutParams(-1, dp(56));
         notificationParams.topMargin = dp(10);
-        controlCard.addView(notificationButton, notificationParams);
-
-        root.addView(controlCard, cardParams());
+        appearanceCard.addView(notificationButton, notificationParams);
+        root.addView(appearanceCard, cardParams());
 
         TextView note = text(
                 "차단 중에는 화면 가장자리를 포함한 일반 앱 영역의 터치가 막힙니다. " +
@@ -162,6 +264,45 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    private void showOverlayPreview(int opacityPercent) {
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
+
+        LinearLayout preview = new LinearLayout(this);
+        preview.setGravity(Gravity.CENTER);
+        preview.setOrientation(LinearLayout.VERTICAL);
+        preview.setRotation(180f);
+        preview.setBackgroundColor(Color.rgb(127, 29, 29));
+        preview.setAlpha(opacityPercent / 100f);
+
+        TextView title = text("위치 차단 중", 28, Color.WHITE);
+        title.setGravity(Gravity.CENTER);
+        preview.addView(title);
+
+        TextView help = text("휴대폰을 정상 방향으로 돌려주세요.\n화면을 누르면 미리보기가 닫힙니다.",
+                17, Color.WHITE);
+        help.setGravity(Gravity.CENTER);
+        help.setPadding(dp(24), dp(24), dp(24), dp(24));
+        preview.addView(help);
+        preview.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.setContentView(preview);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT);
+        }
+        dialog.setOnShowListener(ignored -> {
+            Window shownWindow = dialog.getWindow();
+            if (shownWindow != null) {
+                shownWindow.setLayout(WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT);
+            }
+        });
+        dialog.show();
+    }
+
     private LinearLayout.LayoutParams cardParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(16);
@@ -179,6 +320,39 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:" + getPackageName()));
         startActivity(intent);
+    }
+
+    private void openAppDetailsSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + getPackageName()));
+        startActivity(intent);
+    }
+
+    private void openUnusedAppRestrictionsSettings() {
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName()));
+        } else {
+            intent = new Intent("android.intent.action.AUTO_REVOKE_PERMISSIONS",
+                    Uri.parse("package:" + getPackageName()));
+        }
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            startActivityForResult(intent, 11);
+        } else {
+            openAppDetailsSettings();
+        }
+    }
+
+    private boolean areUnusedAppRestrictionsEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return false;
+        }
+        try {
+            return !getPackageManager().isAutoRevokeWhitelisted();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private void startGuard() {
@@ -225,34 +399,38 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (preferences.getBoolean(OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED, false)
+                && Settings.canDrawOverlays(this) && !GuardService.running) {
+            startGuard();
+        }
         updateStatus();
     }
 
     private void updateStatus() {
+        boolean overlayEnabled = preferences.getBoolean(
+                OverlaySettings.KEY_SCREEN_OVERLAY_ENABLED, false);
+        boolean lockScreenEnabled = preferences.getBoolean(
+                OverlaySettings.KEY_LOCK_SCREEN_ENABLED, false);
+        updatingSwitches = true;
+        overlaySwitch.setChecked(overlayEnabled);
+        lockScreenSwitch.setChecked(lockScreenEnabled);
+        updatingSwitches = false;
+
         boolean permitted = Settings.canDrawOverlays(this);
-        permissionState.setText(permitted ? "오버레이 권한: 허용됨" : "오버레이 권한: 필요함");
-        permissionState.setTextColor(permitted ? Color.rgb(22, 163, 74) : Color.rgb(220, 38, 38));
+        overlayPermissionContent.setVisibility(overlayEnabled && !permitted
+                ? android.view.View.VISIBLE : android.view.View.GONE);
+
         boolean accessibilityEnabled = isAccessibilityServiceEnabled();
-        accessibilityState.setText(accessibilityEnabled
-                ? "잠금화면 접근성 서비스: 켜짐"
-                : "잠금화면 접근성 서비스: 꺼짐");
-        accessibilityState.setTextColor(accessibilityEnabled
-                ? Color.rgb(22, 163, 74) : Color.rgb(220, 38, 38));
-        boolean allGranted = permitted && accessibilityEnabled;
-        permissionTitle.setText(allGranted ? "필수 권한 (전부 허용됨)" : "필수 권한");
-        if (allGranted && !lastAllGranted) {
-            setPermissionExpanded(false);
-        } else if (!allGranted) {
-            setPermissionExpanded(true);
-        }
-        lastAllGranted = allGranted;
-        serviceState.setText(GuardService.running ? "보호 서비스 실행 중" : "보호 서비스 중지됨");
-        serviceState.setTextColor(GuardService.running ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
+        lockScreenPermissionContent.setVisibility(lockScreenEnabled && !accessibilityEnabled
+                ? android.view.View.VISIBLE : android.view.View.GONE);
+        unusedAppRestrictionsContent.setVisibility(
+                areUnusedAppRestrictionsEnabled()
+                        ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
-    private void setPermissionExpanded(boolean expanded) {
-        permissionContent.setVisibility(expanded
-                ? android.view.View.VISIBLE : android.view.View.GONE);
+    private void stopGuard() {
+        stopService(new Intent(this, GuardService.class));
+        GuardService.running = false;
     }
 
     private boolean isAccessibilityServiceEnabled() {

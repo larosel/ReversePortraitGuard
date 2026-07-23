@@ -2,6 +2,7 @@ package com.example.reverseportraitguard;
 
 import android.accessibilityservice.AccessibilityService;
 import android.app.KeyguardManager;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.hardware.Sensor;
@@ -17,7 +18,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class LockScreenGuardAccessibilityService extends AccessibilityService
-        implements SensorEventListener {
+        implements SensorEventListener, SharedPreferences.OnSharedPreferenceChangeListener {
     private static final long STABLE_TIME_MS = 300L;
     private static final float ENTER_THRESHOLD = -7.0f;
     private static final float EXIT_THRESHOLD = -5.5f;
@@ -27,6 +28,7 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
     private WindowManager windowManager;
     private KeyguardManager keyguardManager;
     private View overlay;
+    private SharedPreferences preferences;
     private boolean usingAccelerometer;
     private boolean reversePortrait;
     private boolean candidateState;
@@ -36,6 +38,8 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        preferences = getSharedPreferences(OverlaySettings.PREFERENCES_NAME, MODE_PRIVATE);
+        preferences.registerOnSharedPreferenceChangeListener(this);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         keyguardManager = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -88,7 +92,9 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
     }
 
     private void updateOverlay() {
-        if (reversePortrait && keyguardManager.isKeyguardLocked()) {
+        boolean enabled = preferences != null && preferences.getBoolean(
+                OverlaySettings.KEY_LOCK_SCREEN_ENABLED, false);
+        if (enabled && reversePortrait && keyguardManager.isKeyguardLocked()) {
             showOverlay();
         } else {
             removeOverlay();
@@ -103,7 +109,8 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
         blocker.setGravity(Gravity.CENTER);
         blocker.setOrientation(LinearLayout.VERTICAL);
         blocker.setRotation(180f);
-        blocker.setBackgroundColor(Color.argb(215, 100, 20, 20));
+        blocker.setBackgroundColor(Color.rgb(100, 20, 20));
+        blocker.setAlpha(getOverlayAlpha());
         blocker.setOnTouchListener((view, event) -> true);
 
         TextView title = new TextView(this);
@@ -148,6 +155,20 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
         }
     }
 
+    private float getOverlayAlpha() {
+        return preferences.getInt(OverlaySettings.KEY_OPACITY_PERCENT,
+                OverlaySettings.DEFAULT_OPACITY_PERCENT) / 100f;
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        if (OverlaySettings.KEY_OPACITY_PERCENT.equals(key) && overlay != null) {
+            overlay.setAlpha(getOverlayAlpha());
+        } else if (OverlaySettings.KEY_LOCK_SCREEN_ENABLED.equals(key)) {
+            updateOverlay();
+        }
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         updateOverlay();
@@ -161,6 +182,9 @@ public class LockScreenGuardAccessibilityService extends AccessibilityService
     @Override
     public void onDestroy() {
         removeOverlay();
+        if (preferences != null) {
+            preferences.unregisterOnSharedPreferenceChangeListener(this);
+        }
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
