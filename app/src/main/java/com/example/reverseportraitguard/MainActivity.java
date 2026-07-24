@@ -274,7 +274,7 @@ public class MainActivity extends Activity {
         preview.setBackgroundColor(Color.rgb(127, 29, 29));
         preview.setAlpha(opacityPercent / 100f);
 
-        TextView title = text("위치 차단 중", 28, Color.WHITE);
+        TextView title = text("터치 차단 중", 28, Color.WHITE);
         title.setGravity(Gravity.CENTER);
         preview.addView(title);
 
